@@ -11,6 +11,7 @@ set INST=
 set BIN=
 set DOC=no
 set EXES_ONLY=no
+set STATIC=no
 goto :a0
 :a2
 shift
@@ -28,6 +29,7 @@ if (%1)==(-i) set INST=%2&& goto :a2
 if (%1)==(-b) set BIN=%2&& goto :a2
 if (%1)==(-d) set DOC=yes&& goto :a3
 if (%1)==(-x) set EXES_ONLY=yes&& goto :a3
+if (%1)==(-s) set STATIC=yes&& goto :a3
 if (%1)==() goto :p1
 :usage
 echo usage: build-tcc.bat [ options ... ]
@@ -40,6 +42,7 @@ echo   -i tccdir            install tcc into tccdir
 echo   -b bindir            optionally install binaries into bindir elsewhere
 echo   -d                   create tcc-doc.html too (needs makeinfo)
 echo   -x                   just create the executables
+echo   -s                   produce statically linked libtcc.lib
 echo   -clean               delete all previously produced files and directories
 exit /B 1
 
@@ -77,7 +80,7 @@ set CMD=%CMD% %ARG%
 shift
 if not (%1)==() goto :c0
 echo on
-%CMD% -O1 -W2 -Zi -MT -GS- -nologo -link -opt:ref,icf
+%CMD% -O1 -W2 -Z7 -MT -GS- -nologo -link -opt:ref,icf
 @exit /B %ERRORLEVEL%
 
 @rem ------------------------------------------------------
@@ -119,9 +122,17 @@ echo>> ..\config.h #endif
 for %%f in (*tcc.exe *tcc.dll) do @del %%f
 
 :compiler
-%CC% -o libtcc.dll -shared ..\libtcc.c %D% -DLIBTCC_AS_DLL
+if (%STATIC%)==(yes) (
+    set LIBTCC=libtcc.lib
+    %CC% ..\libtcc.c %D%
+    lib /out:libtcc.lib libtcc.obj
+) else (
+    set LIBTCC=libtcc.dll
+    %CC% -o libtcc.dll -shared ..\libtcc.c %D% -DLIBTCC_AS_DLL
+)
+
 @if errorlevel 1 goto :the_end
-%CC% -o tcc.exe ..\tcc.c libtcc.dll %D% -DONE_SOURCE"=0"
+%CC% -o tcc.exe ..\tcc.c %LIBTCC% %D% -DONE_SOURCE"=0"
 %CC% -o %PX%-tcc.exe ..\tcc.c %DX%
 
 @if (%EXES_ONLY%)==(yes) goto :files-done
@@ -134,8 +145,10 @@ copy>nul ..\libtcc.h libtcc
 copy>nul ..\tests\libtcc_test.c examples
 copy>nul tcc-win32.txt doc
 
-.\tcc -impdef libtcc.dll -o libtcc\libtcc.def
-@if errorlevel 1 goto :the_end
+if not (%STATIC%)==(yes) (
+    .\tcc -impdef libtcc.dll -o libtcc\libtcc.def
+    @if errorlevel 1 goto :the_end
+)
 
 :libtcc1.a
 @set O1=libtcc1.o crt1.o crt1w.o wincrt1.o wincrt1w.o dllcrt1.o dllmain.o chkstk.o bcheck.o
